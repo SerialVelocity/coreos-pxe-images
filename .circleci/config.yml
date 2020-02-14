@@ -92,6 +92,7 @@ jobs:
                   ghr "${BRANCH}" "${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
                   ghr "${BRANCH}" "${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}"
 
+                  rm uncompressed.img
                   rm "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
                   rm "${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
                   rm "${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}"

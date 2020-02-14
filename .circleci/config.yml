@@ -20,7 +20,7 @@ jobs:
             set -euo pipefail
 
             function skipcpio() {
-              cpio -t 2>&1 >/dev/null | (grep -vE '^[0-9]+ blocks$' >&2 || true)
+              cpio -t 2>&1 >/dev/null | (grep -vE '^[0-9]+ blocks?$' >&2 || true)
               cat
             }
 

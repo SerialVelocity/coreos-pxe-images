@@ -53,15 +53,35 @@ jobs:
                   echo "Finding offsets..." >&2
                   FULL_SIZE=$(stat -c '%s' "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}")
                   GZIP_COMPRESSED_SIZE=$(cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | wc -c)
-                  GZIP_UNCOMPRESSED_SIZE=$(cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | gzip -dc | wc -c)
-                  ROOTFS_SIZE=$(cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | gzip -dc | skipcpio | wc -c)
                   MICROCODE_SIZE=$((${FULL_SIZE} - ${GZIP_COMPRESSED_SIZE}))
-                  INITRAMFS_SIZE=$((${GZIP_UNCOMPRESSED_SIZE}-${ROOTFS_SIZE}))
+
+                  cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | gzip -dc > uncompressed.img
+                  GZIP_UNCOMPRESSED_SIZE=$(stat -c '%s' uncompressed.img)
+
+                  ROOTFS_SIZE=${GZIP_UNCOMPRESSED_SIZE}
+                  while true; do
+                      REMAINING_SIZE=$(tail -c "${ROOTFS_SIZE}" uncompressed.img | skipcpio | wc -c)
+                      if [[ "${REMAINING_SIZE}" -eq 0 ]]; then
+                          break
+                      fi
+                      ROOTFS_SIZE=${REMAINING_SIZE}
+                  done
+                  if [[ "$(tail -c "${ROOTFS_SIZE}" uncompressed.img | cpio -t)" != "root.squashfs" ]]; then
+                      echo "Failed to find the root.squashfs" >&2
+                      exit 1
+                  fi
+                  INITRAMFS_SIZE=$((${GZIP_UNCOMPRESSED_SIZE} - ${ROOTFS_SIZE}))
 
                   echo "Creating artefacts..." >&2
                   set +o pipefail
-                  (head -c "${MICROCODE_SIZE}" "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"; cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | gzip -dc | head -c "${INITRAMFS_SIZE}" | gzip -c9) > "${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
-                  cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | gzip -dc | skipcpio | cpio -iv --to-stdout "root.squashfs" > "${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}"
+
+                  echo "Preparing ${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}..." >&2
+                  head -c "${MICROCODE_SIZE}" "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" > "${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
+                  head -c "${INITRAMFS_SIZE}" uncompressed.img | gzip -c9 >> "${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
+
+                  echo "Preparing ${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}..." >&2
+                  tail -c "${ROOTFS_SIZE}" uncompressed.img | cpio -iv --to-stdout "root.squashfs" > "${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}"
+
                   set -o pipefail
 
                   if [[ "$(stat -c '%s' "${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}")" -eq 0 ]] || [[ "$(stat -c '%s' "${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}")" -eq 0 ]]; then

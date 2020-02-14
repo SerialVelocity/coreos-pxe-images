@@ -1,0 +1,80 @@
+version: 2
+
+jobs:
+  build:
+    docker:
+      - image: alpine:latest
+    steps:
+      - checkout
+      - run:
+          name: Setup dependencies
+          command: |
+            set -euo pipefail
+
+            apk add --no-progress --no-cache cpio curl git gzip jq tar
+            curl -LsS --fail https://github.com/tcnksm/ghr/releases/download/v0.12.2/ghr_v0.12.2_linux_amd64.tar.gz \
+                | tar xz --strip-components=1 -C /usr/bin --wildcards "*/ghr"
+      - run:
+          name: Build Fedora CoreOS PXE images if necessary
+          command: |
+            set -euo pipefail
+
+            function skipcpio() {
+              cpio -t 2>&1 >/dev/null | (grep -vE '^[0-9]+ blocks$' >&2 || true)
+              cat
+            }
+
+            BRANCHES="testing stable"
+            for BRANCH in ${BRANCHES}; do
+              # Only build the latest 10 releases
+              BUILD_IDS=$(curl -sS --fail "https://builds.coreos.fedoraproject.org/prod/streams/${BRANCH}/builds/builds.json" | jq -r '.builds[].id' | head -n 10)
+
+              for BUILD_ID in ${BUILD_IDS}; do
+                OUTPUT_NAME_PREFIX="fedora-coreos-${BUILD_ID}-installer-"
+                INPUT_NAME_PREFIX="fedora-coreos-${BUILD_ID}-live-"
+
+                # Kernel
+                KERNEL_SUFFIX="kernel-x86_64"
+                RELEASE_HTTPCODE=$(curl -sSo /dev/null --write-out %{http_code} "https://github.com/SerialVelocity/coreos-pxe-images/releases/download/${BRANCH}/${OUTPUT_NAME_PREFIX}${KERNEL_SUFFIX}")
+                if [[ "${RELEASE_HTTPCODE}" -ne 302 ]]; then
+                  echo "Downloading ${INPUT_NAME_PREFIX}${KERNEL_SUFFIX}..." >&2
+                  curl -LsS --fail -o "${OUTPUT_NAME_PREFIX}${KERNEL_SUFFIX}" "https://builds.coreos.fedoraproject.org/prod/streams/${BRANCH}/builds/${BUILD_ID}/x86_64/${INPUT_NAME_PREFIX}${KERNEL_SUFFIX}"
+                  ghr "${BRANCH}" "${OUTPUT_NAME_PREFIX}${KERNEL_SUFFIX}"
+                fi
+
+                # Initramfs and squashfs
+                INITRAMFS_SUFFIX="initramfs.x86_64.img"
+                ROOTFS_SUFFIX="rootfs.x86_64.img"
+                RELEASE_HTTPCODE=$(curl -sSo /dev/null --write-out %{http_code} "https://github.com/SerialVelocity/coreos-pxe-images/releases/download/${BRANCH}/${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}")
+                if [[ "${RELEASE_HTTPCODE}" -ne 302 ]]; then
+                  echo "Downloading ${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}..." >&2
+                  curl -LsS --fail -o "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" "https://builds.coreos.fedoraproject.org/prod/streams/${BRANCH}/builds/${BUILD_ID}/x86_64/${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
+
+                  echo "Finding offsets..." >&2
+                  FULL_SIZE=$(stat -c '%s' "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}")
+                  GZIP_COMPRESSED_SIZE=$(cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | wc -c)
+                  GZIP_UNCOMPRESSED_SIZE=$(cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | gzip -dc | wc -c)
+                  ROOTFS_SIZE=$(cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | gzip -dc | skipcpio | wc -c)
+                  MICROCODE_SIZE=$((${FULL_SIZE} - ${GZIP_COMPRESSED_SIZE}))
+                  INITRAMFS_SIZE=$((${GZIP_UNCOMPRESSED_SIZE}-${ROOTFS_SIZE}))
+
+                  echo "Creating artefacts..." >&2
+                  set +o pipefail
+                  (head -c "${MICROCODE_SIZE}" "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"; cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | gzip -dc | head -c "${INITRAMFS_SIZE}" | gzip -c9) > "${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
+                  cat "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}" | skipcpio | gzip -dc | skipcpio | cpio -iv --to-stdout "root.squashfs" > "${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}"
+                  set -o pipefail
+
+                  if [[ "$(stat -c '%s' "${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}")" -eq 0 ]] || [[ "$(stat -c '%s' "${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}")" -eq 0 ]]; then
+                      echo "Failed to generate files" >&2
+                      exit 1
+                  fi
+
+                  ghr "${BRANCH}" "${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
+                  ghr "${BRANCH}" "${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}"
+
+                  rm "${INPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
+                  rm "${OUTPUT_NAME_PREFIX}${INITRAMFS_SUFFIX}"
+                  rm "${OUTPUT_NAME_PREFIX}${ROOTFS_SUFFIX}"
+                fi
+              done
+            done

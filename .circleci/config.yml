@@ -24,7 +24,7 @@ jobs:
               cat
             }
 
-            BRANCHES="testing stable"
+            BRANCHES="stable testing"
             for BRANCH in ${BRANCHES}; do
               # Only build the latest 10 releases
               BUILD_IDS=$(curl -sS --fail "https://builds.coreos.fedoraproject.org/prod/streams/${BRANCH}/builds/builds.json" | jq -r '.builds[].id' | head -n 10)

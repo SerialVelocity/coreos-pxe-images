@@ -19,6 +19,13 @@ jobs:
           command: |
             set -euo pipefail
 
+            function is_release_blacklisted() {
+                if [[ "$1" == "31.20200505.2.0" ]]; then
+                    return 0
+                fi
+                return 1
+            }
+
             function skipcpio() {
               cpio -t 2>&1 >/dev/null | (grep -vE '^[0-9]+ blocks?$' >&2 || true)
               cat
@@ -30,6 +37,11 @@ jobs:
               BUILD_IDS=$(curl -sS --fail "https://builds.coreos.fedoraproject.org/prod/streams/${BRANCH}/builds/builds.json" | jq -r '.builds[].id' | head -n 10)
 
               for BUILD_ID in ${BUILD_IDS}; do
+                if is_release_blacklisted "${BUILD_ID}"; then
+                  echo "Skipping blacklisted release ${BUILD_ID}" >&2
+                  continue
+                fi
+
                 OUTPUT_NAME_PREFIX="fedora-coreos-${BUILD_ID}-installer-"
                 INPUT_NAME_PREFIX="fedora-coreos-${BUILD_ID}-live-"
 

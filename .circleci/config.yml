@@ -16,6 +16,7 @@ jobs:
                 | tar xz --strip-components=1 -C /usr/bin --wildcards "*/ghr"
       - run:
           name: Build Fedora CoreOS PXE images if necessary
+          shell: /bin/bash
           command: |
             set -euo pipefail
 

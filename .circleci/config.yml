@@ -80,7 +80,8 @@ jobs:
                   done
                   FILES=$(tail -c "${ROOTFS_SIZE}" uncompressed.img | cpio -t)
                   if [[ "${FILES}" != *"root.squashfs"* ]]; then
-                      echo "Failed to find the root.squashfs" >&2
+                      echo "Failed to find the root.squashfs. Output:" >&2
+                      cat >&2 <<< "${FILES}"
                       exit 1
                   fi
                   INITRAMFS_SIZE=$((${GZIP_UNCOMPRESSED_SIZE} - ${ROOTFS_SIZE}))

@@ -79,7 +79,7 @@ jobs:
                       ROOTFS_SIZE=${REMAINING_SIZE}
                   done
                   FILES=$(tail -c "${ROOTFS_SIZE}" uncompressed.img | cpio -t)
-                  if [[ "${FILES}" != "root.squashfs" ]] && [[ "${FILES}" != $'.\nroot.squashfs' ]]; then
+                  if [[ "${FILES}" != *"root.squashfs"* ]]; then
                       echo "Failed to find the root.squashfs" >&2
                       exit 1
                   fi

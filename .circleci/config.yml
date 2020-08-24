@@ -17,6 +17,7 @@ jobs:
       - run:
           name: Build Fedora CoreOS PXE images if necessary
           command: |
+            #!/usr/bin/env bash
             set -euo pipefail
 
             function is_release_blacklisted() {

@@ -35,7 +35,7 @@ jobs:
             BRANCHES="stable testing"
             for BRANCH in ${BRANCHES}; do
               # Only build the latest 10 releases
-              BUILD_IDS=$(curl -sS --fail "https://builds.coreos.fedoraproject.org/prod/streams/${BRANCH}/builds/builds.json" | jq -r '.builds[].id' | head -n 10)
+              BUILD_IDS=$(curl -sS --fail "https://builds.coreos.fedoraproject.org/prod/streams/${BRANCH}/builds/builds.json" | jq -r '.builds[0:10][].id')
 
               for BUILD_ID in ${BUILD_IDS}; do
                 if is_release_blacklisted "${BUILD_ID}"; then
